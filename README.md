@@ -30,8 +30,7 @@ Unlike traditional scanners that spit out hundreds of false positives, **BountyG
 From zero to fully automated hacking in 3 simple commands:
 
 ```bash
-git clone https://github.com/N1neKitsune/BountyGrimoire.git
-cd BountyGrimoire
+git clone https://github.com/
 ./install.sh
 ```
 
