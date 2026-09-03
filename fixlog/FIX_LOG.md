@@ -5,6 +5,21 @@ Naye fixes hamesha upar (sabse recent pehle) add karo.
 
 ---
 
+## 2026-09-04 — Fix batch #5: CLAUDE_MASTER_BUILD_PROMPT.md Phase 0/1 — session-file bug, stale docstring, first test suite
+
+Context: `CLAUDE_MASTER_BUILD_PROMPT.md`/`IMPLEMENTATION_RULES.md`/`PRD_CORRECTED.md`/`TDD_CORRECTED.md`/`UI_UX_CORRECTED.md` naye files hain (project ke andar hi mile, maine nahi likhe) jo BountyGrimoire ko "Local-First AI Bug Bounty Hunting Workbench" ke roop me formally reframe karte hain aur ek phased implementation plan dete hain. User ne `CLAUDE_MASTER_BUILD_PROMPT.md ... start` bola — is entry me Phase 0 (recon) aur Phase 1 ka pehla scoped chunk cover hota hai.
+
+- **Kya mila (recon)**: `gui/server.py` ka module docstring keh raha tha ki scan start karne par "a REAL terminal window" khulti hai — ye us purane, already-reverted approach ka leftover tha jo user ne explicitly reject kiya tha ("alag se nahi khulna chahiye"). Code khud sahi hai (Popen + piped log file, embedded feed), sirf docstring jhooth bol rahi thi.
+  - **Fix**: Docstring update kiya taaki actual behavior (subprocess, piped log, embedded workspace card) describe kare, koi terminal window nahi.
+- **Kya mila (asli bug)**: `sessions/` folder do alag, dono legitimate features share karta hai — (1) `hunt.md` Step 10 jo `hunt-<target>-<date>.json` likhta hai (dashboard isko padhta hai), aur (2) `/session-save`+`/session-load`+`/session-list` trio jo `<name>.json` likhta hai with a completely different schema (`name`/`saved_at`/`scope`/`tested_urls`/`findings`/`notes`, `validated_findings` key hi nahi hai). `gui/server.py:read_sessions()` **saari** `sessions/*.json` files ko blindly parse karti thi — agar kabhi koi manual `/session-save` file usi folder me hoti, to dashboard usse ek phantom session card (null target, null date, 0 findings) ke roop me dikhata, program ki real hunt history ko pollute karke. TDD_CORRECTED.md §8.5 ne isko "schema conflict, needs unification" bola tha, lekin actual fix schema merge nahi hai — dono schemas sahi hain, bas file-discrimination missing thi.
+  - **Fix**: `read_sessions()` ka glob `sessions/*.json` se `sessions/hunt-*.json` kar diya (`gui/server.py`). TDD_CORRECTED.md §8.5 aur §17 P0#1 ko update kiya taaki ye correct root-cause reflect kare.
+- **Verify kiya**: Synthetic manual-audit-session file banake test kiya — pehle ye dashboard ke `mozilla` program me phantom entry add kar deta tha, fix ke baad sirf real `hunt-*.json` files (dono asli session files on disk) padhi jaati hain, manual-save file completely skip ho jaati hai. `python3 -m py_compile gui/server.py generate-skill.py` pass.
+- **Naya**: `tests/test_server.py` (stdlib `unittest`, koi naya dependency nahi) — scope-table parsing, `_load_json` failure handling, watchlist add/remove/idempotency, aur upar wala session-discrimination fix cover karta hai. Saare file-touching tests `WATCHLIST_PATH`/`ROOT` ko temp dir pe redirect karte hain — real `gui/watchlist.json`/`sessions/` kabhi touch nahi hoti (`git status` se verify kiya, run ke baad koi diff nahi). `python3 -m unittest discover -s tests -v` → 14/14 pass.
+- **Files changed**: `gui/server.py` (docstring + `read_sessions()`), `tests/test_server.py` (naya), `TDD_CORRECTED.md` (§8.5, §13.1, §17 P0#1/#2).
+- **Baaki kya bacha (TDD_CORRECTED.md ka P0 backlog)**: full API/event-parser/run-lifecycle test coverage, `accounts/`/cookie secret-redaction hardening, `hunter_progress()` ko real `/hunt` log ke against verify karna. Phase 2 onwards abhi shuru nahi hua.
+
+---
+
 ## 2026-09-03 — Fix batch #4: HackerOne auto-submit MCP tools explicitly blocked
 
 - **Kya mila**: User ke global opencode config (`~/.config/opencode/opencode.json`) me 8 MCP servers hain (github, memory, sqlite-nifty, filesystem-nifty, fetch, playwright, chrome-devtools, **hackerone**) — `opencode mcp list` chalake BountyGrimoire folder ke andar se confirm kiya ki ye **sab connected hote hain** jab bhi opencode is project me chalta hai (project ka `opencode.json` inhe override nahi karta). Claude Code (global `~/.claude.json`) me bhi `hackerone` MCP connected hai isi session me.

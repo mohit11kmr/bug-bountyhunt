@@ -1,6 +1,9 @@
-**Fully Autonomous AI Agents for Continuous Bug Bounty Hunting**
+<div align="center">
 
-Powered by **17 specialized AI agents** (+ a dedicated recon step) playing both Attacker and Validator.<br/>
+# 🦊 BountyGrimoire
+**A Local-First AI Bug Bounty Research Workbench**
+
+17 specialized AI vulnerability hunters + an independent validator, orchestrated by Claude Code or opencode, running entirely on your own machine.<br/>
 Skills built from real, paid HackerOne disclosures via the public transparency dataset.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
@@ -14,28 +17,30 @@ Skills built from real, paid HackerOne disclosures via the public transparency d
 
 ## ⚡ Why BountyGrimoire?
 
-Hunting for bugs manually takes days of repetitive reconnaissance. BountyGrimoire orchestrates an army of **17 highly specialized AI hunters** (preceded by a dedicated recon pass) that operate in parallel to map, scan, and exploit vulnerabilities across your targets. 
+Manual bug bounty research means repeating the same loop every time: review scope, recon the attack surface, test for each vulnerability class, validate what you found, take notes, write the report. BountyGrimoire automates that repetitive breadth while keeping **you** in control of authorization, scope, destructive actions, final validation, and disclosure.
 
-Unlike traditional scanners that spit out hundreds of false positives, **BountyGrimoire thinks like a real hacker:**
+Unlike a generic scanner that dumps hundreds of unverified alerts:
 
-- **🧠 Native Intuition**: Agents are trained on thousands of real, paid HackerOne disclosures via the public transparency dataset.
-- **🎯 Minimal False Positives**: Every finding goes to an isolated **Validator agent**. If the Validator can't independently reproduce the attack using `curl`, you won't even see it.
-- **🔑 Authenticated Workflows**: Swaps effortlessly between Attacker and Victim sessions to uncover complex IDOR and privilege escalation flaws.
-- **📚 Continuous Memory**: The more you hunt, the smarter it gets. Successful attack vectors and target tech-stack state are saved per-program.
+- **🧠 Skills from real disclosures**: Hunters are built from thousands of real, paid HackerOne disclosures via the public transparency dataset, refined further from your own private writeups.
+- **🎯 Independent validation**: Every candidate finding goes through a separate **Validator** pass that checks scope, reproducibility, and evidence before it's ever shown to you.
+- **🔑 Authenticated workflows**: A focused authenticated hunter set swaps between attacker/victim test sessions to uncover IDOR and privilege-escalation flaws.
+- **📚 Local, persistent memory**: Confirmed patterns, false positives, and tech-stack notes are saved per program under `memory/`, so a hunt gets smarter about a target over time.
+- **🖥️ Local dashboard**: A `127.0.0.1`-only web dashboard (`gui/server.py`) lets you search HackerOne for bounty-paying programs, track them in a workspace, start/pause/resume scans with a live embedded feed per program, and see findings + AI-spend tracking — without reading raw CLI logs.
+
+**What this is not**: a hosted multi-tenant SaaS, a signature/CVE scanner, or an automated-submission tool. It runs on your machine, under your account, and every report it drafts still needs *you* to review and submit it.
 
 ---
 
 ## 🚀 Quick Start
 
-From zero to fully automated hacking in 3 simple commands:
-
 ```bash
-git clone https://github.com/
+git clone https://github.com/mohit11kmr/bug-bountyhunt.git
+cd bug-bountyhunt
 ./install.sh
 ```
 
 > [!WARNING]
-> **BountyGrimoire requires elevated permissions to operate.**
+> **BountyGrimoire needs elevated permissions to operate.**
 > Automated security testing (curl, recon, payload execution) needs Claude Code to run shell commands without prompting for every single one — that's what `--dangerous` below does, and it's a real risk on a personal machine if misused.
 > **Always start via `./start-bounty.sh`** (never call `claude --dangerously-skip-permissions` directly) — it loads `.env` safely and keeps interactive permission prompts on by default; only add `--dangerous` if you understand the risk and are running inside a dedicated VM or isolated environment.
 
@@ -44,26 +49,42 @@ git clone https://github.com/
 ./start-bounty.sh --dangerous  # unrestricted — VM/isolated environment only
 ```
 
-### 🛠️ The 3-Step Hacking Workflow
-
-No configuration nightmare. Just point and shoot:
+BountyGrimoire also runs via opencode instead of Claude Code — same commands, different CLI/model:
 
 ```bash
-# 1. Load your scope program rules automatically (HackerOne)
+./start-bounty-bigpickle.sh    # opencode, free tier (output arrives in batches, not live)
+./start-bounty-gemini.sh       # opencode + Gemini
+```
+
+### 🛠️ The 3-Step Hacking Workflow
+
+```bash
+# 1. Load a program's scope and rules from HackerOne into CLAUDE.md
 /load-program-h1 mozilla
 
-# 2. Launch all 17 parallel agents on your target
+# 2. Launch all 17 hunters (recon runs first, automatically) on an in-scope target
 /hunt target.com
 
-# 3. Export a complete, submission-ready report (CVSS, PoC, Remediation)
+# 3. Generate a local, submission-ready Markdown report — you review and submit it manually
 /report
 ```
+
+`CLAUDE.md` (regenerated by step 1, never committed — see `.gitignore`) is the single source of truth every hunt reads before touching a target: scope, proxy settings, and program-specific rules. `/hunt` refuses to test anything not explicitly listed there.
+
+### 🖥️ Or drive it from the dashboard
+
+```bash
+python3 gui/server.py
+# -> http://127.0.0.1:8765
+```
+
+Search HackerOne for bounty-paying open programs, add one to your workspace (no scan starts yet), then hit **Start** on that program's own card — you'll see the run's live output embedded right there, with pause/resume, a per-program findings table (with a report-status you set yourself: not reported / drafted / submitted), and running AI token/cost totals. Binds to `127.0.0.1` only — this reads and can trigger scans against data that may cover an active, undisclosed engagement, and must never be exposed beyond your own machine.
 
 ---
 
 ## 🦠 The 17 Specialized Hunters
 
-Each agent is a dedicated expert in a single vulnerability class. They don't just scan — they exploit. A dedicated **Recon** pass (not a standalone agent — it's `/hunt`'s blocking Step 4) runs first to feed endpoints to all 17.
+Each agent is a dedicated expert in a single vulnerability class. A blocking **recon** pass (not a standalone agent — it's `/hunt`'s first step) runs first and feeds discovered endpoints to all 17.
 
 | 🕵️ Agent | 🎯 Primary Target | 🕵️ Agent | 🎯 Primary Target |
 | :--- | :--- | :--- | :--- |
@@ -77,64 +98,71 @@ Each agent is a dedicated expert in a single vulnerability class. They don't jus
 | **`Insecure`**| CORS, Exposed Admin panels | **`Referer`** | Tokens leaking through Headers |
 | **`Checksum`**| Integrity bypassing, Mismatch | | |
 
+For deep authenticated engagements, `/hunt-auth` runs a smaller, focused set (IDOR, Auth, XSS, BizLogic, PII, Secrets, Enumerable) across two test identities to catch cross-account issues:
+
+```bash
+/setup-account target.com      # Creates/verifies attacker + victim test accounts
+/hunt-auth target.com          # Launches the authenticated hunter set
+```
+
 ---
 
 ## 🧬 Dynamic Skill Generator
 
-The threat landscape evolves every day. So does BountyGrimoire. The built-in **Skill Generator** pulls the absolute latest resolved HackerOne reports (via HuggingFace) and automatically updates the agent's logic with new attack vectors.
+`generate-skill.py` pulls the latest resolved, bounty-paid HackerOne reports (via HuggingFace) and refines a hunter's skill file with new patterns — or feeds in your own private writeups instead.
 
 ```bash
-# Enhance the XSS agent with patterns from the last 20 public reports
+# Enhance the XSS hunter with patterns from the last 20 public reports
 python3 generate-skill.py xss --max 20
 
-# Rebuild and optimize ALL agents simultaneously
+# Rebuild and refine ALL 17 skills at once
 python3 generate-skill.py --all --max 20
 
-# Feed your own private writeups (PDF, Markdown, HTML, JSON) to the agents!
+# Feed your own private writeups (PDF, Markdown, HTML, JSON) into a skill
 python3 generate-skill.py rce --extra ./my-private-writeups/
 ```
 
-BountyGrimoire supports multiple LLMs for skill generation:
+Supports multiple LLM providers for generation:
 - **Anthropic** (e.g. `claude-sonnet-4-5`)
 - **OpenAI** (e.g. `gpt-4o`)
-- **Local/Custom Providers** via OpenAI-compatibilities (Ollama, vLLM, DeepSeek...)
+- **Local/Custom Providers** via OpenAI-compatible endpoints (Ollama, vLLM, DeepSeek...)
 
-> **Note:** Activate the virtual environment before running the generator: `source .venv/bin/activate`
+> Activate the virtual environment first: `source .venv/bin/activate`
+
+Every generated/refined skill is also mirrored into `.opencode/agents/` automatically, so Claude Code and opencode stay in sync.
 
 ---
 
-## 📂 Memory & Advanced Hunts
+## 📂 Memory, Sessions & Findings
 
-### 💾 Auto-Memory System
-BountyGrimoire never forgets what works. After every hunt, `memory/<program>.json` stores confirmed payload patterns, detected tech stacks, and previous false-positives so agents don't waste time on the next run. You can resume any session when needed:
+### 💾 Local memory
+`memory/<program>.json` accumulates confirmed patterns, false positives, and tech-stack notes per program, so a later hunt doesn't waste time retesting what's already known — memory is a hint for where to look, not proof of a live vulnerability; every finding still needs current reproduction.
 
+### 🔁 Sessions
 ```bash
 /session-save friday-night-hunt
 /session-load friday-night-hunt
 ```
+Hunt results land under `sessions/*.json`; the dashboard reads the same files to build its findings table and per-program stats.
 
-### 🎭 Authenticated Hunts
-For deep, complex applications, build both sides of the attack to verify cross-account permissions:
-```bash
-/setup-account target.com      # Sets up Attacker and Victim tokens
-/hunt-auth target.com          # Launches agents capable of session-swapping
-```
+### 📝 Reports
+`/report` writes a local Markdown draft under `reports/` — full reproduction, evidence, impact, and a recommended CVSS vector. **Nothing is submitted automatically.** HackerOne's own submission/write API tools are explicitly blocked at two independent layers (a prompt-level instruction in every hunting command, and a hard permission-deny in `.claude/settings.json` for Claude Code sessions) — you always review and submit yourself through the HackerOne web UI.
 
 <details>
 <summary><b>⚙️ Custom .env Configuration (Optional)</b></summary>
 
-The `.env` file is primarily used to fuel the **Skill Generator**. Testing runs entirely local via Claude.
-
 ```bash
-# Define your LLM for the Skill Generator Engine
+# LLM for the Skill Generator (generate-skill.py)
 ANTHROPIC_API_KEY=sk-ant-...
 # OPENAI_API_KEY=sk-proj-...
 # OPENAI_BASE_URL=http://localhost:8000/v1
 
-# Platform Tokens (To automatically load scopes & rules)
-HF_TOKEN=hf_...               # Faster HuggingFace downloads
-H1_USER=your_h1_username      # HackerOne Private Programs
+# HackerOne — needed for /load-program-h1 and the dashboard's program search
+H1_USER=your_h1_username
 H1_TOKEN=your_h1_api_token
+
+# Faster HuggingFace downloads for the Skill Generator (optional)
+HF_TOKEN=hf_...
 ```
 
 </details>
@@ -144,10 +172,12 @@ H1_TOKEN=your_h1_api_token
 ## ⚖️ Rules of Engagement
 
 > 🛑 **WARNING**: Unauthorized hacking is illegal.
-> BountyGrimoire is an offensive tool designed **strictly** for authorized Bug Bounty programs you are enrolled in, your own infrastructure, or contracted penetration tests. Do not use this tool on targets you do not have explicit, documented permission to test. Always respect program rules.
+> BountyGrimoire is an offensive research tool designed **strictly** for authorized Bug Bounty programs you're enrolled in, your own infrastructure, or contracted penetration tests. Do not use it against a target you don't have explicit, documented permission to test. Always respect program rules and rate limits.
+>
+> `CLAUDE.md`, `memory/`, `sessions/`, `reports/`, and `gui/`'s workspace/findings files are git-ignored on purpose — they can hold details of an active, undisclosed engagement. Never commit them, even to a private repo.
 
 <br/>
 
 <div align="center">
-  <i>Built with ✨ for the security community. Native skills aggregated from the <a href="https://huggingface.co/datasets/Hacker0x01/hackerone_disclosed_reports">HackerOne Transparency Dataset</a>.</i>
+  <i>Built for the security community. Native skills aggregated from the <a href="https://huggingface.co/datasets/Hacker0x01/hackerone_disclosed_reports">HackerOne Transparency Dataset</a>.</i>
 </div>

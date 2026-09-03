@@ -4,9 +4,10 @@ BountyGrimoire — local status + control dashboard.
 
 - Monitors: current program, every program/target scanned (memory/ + sessions/),
   findings, per-program AI spend, and a live progress readout while a scan runs.
-- Operates: starting a scan opens a REAL terminal window running
-  `opencode run` / `claude -p` (via `script`, so it's genuinely live and
-  simultaneously captured to a log file this dashboard polls for status).
+- Operates: starting a scan launches `opencode run` / `claude -p` as a
+  subprocess (via `script` for pty-like line buffering), piped straight to a
+  log file this dashboard polls and streams into the program's own workspace
+  card — no separate terminal window is opened.
 
 Zero third-party dependencies — Python stdlib only. Binds to 127.0.0.1 ONLY:
 this can trigger real scans and reads sensitive scan data, must never be
@@ -283,10 +284,20 @@ def read_memory():
 
 
 def read_sessions(programs):
+    """Read /hunt-produced hunt sessions only.
+
+    `sessions/` also holds a second, unrelated file shape written by the
+    manual /session-save|-load|-list command trio ({name, saved_at, scope,
+    tested_urls, findings, notes} — no `validated_findings`/`hunters_launched`
+    key). Only `hunt-*.json` files carry the schema this reader expects;
+    skipping anything else avoids injecting a phantom, null-target session
+    card into a program's history if a manual audit-session save exists
+    alongside real hunt output.
+    """
     sessions_dir = ROOT / "sessions"
     if not sessions_dir.exists():
         return
-    for f in sorted(sessions_dir.glob("*.json")):
+    for f in sorted(sessions_dir.glob("hunt-*.json")):
         data = _load_json(f)
         if data is None:
             continue

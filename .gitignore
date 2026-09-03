@@ -1,7 +1,42 @@
 .env
 .env.bak
+.env.*.bak
+*.env.bak
 .venv/
 __pycache__/
 *.py[cod]
 .playwright-cli/
+
+# CLAUDE.md is generated dynamically by /load-program-h1 — never commit
+CLAUDE.md
+
+# Credentials & sessions — active/undisclosed engagement data, never commit
+accounts/
+sessions/
+memory/
 gui/runs/
+gui/watchlist.json
+gui/findings_status.json
+
+# Reports — contain targets and PoCs
+report-*.md
+reports/
+
+# Claude Code local settings (may contain user-specific paths)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temp files
+*.tmp
+*.log
