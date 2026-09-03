@@ -1,0 +1,7 @@
+.env
+.env.bak
+.venv/
+__pycache__/
+*.py[cod]
+.playwright-cli/
+gui/runs/

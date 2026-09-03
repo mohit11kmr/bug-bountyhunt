@@ -1,0 +1,78 @@
+{
+  "target": "pontoon.allizom.org",
+  "program": "mozilla",
+  "date": "2026-09-03",
+  "hunters_launched": "17/17",
+  "endpoints_discovered": 13,
+  "summary": "Second full 17-hunter pass on Mozilla staging pontoon. Zero bounty-eligible (High/Critical qualifying) findings. Several genuine Medium-class privacy/PII issues confirmed but NON-qualifying because Mozilla only pays High/Critical.",
+  "validated_findings": [
+    {
+      "finding_id": 7,
+      "type": "enumerable/pii",
+      "status": "CONFIRMED (technical), NON_QUALIFYING for bounty",
+      "confidence": 90,
+      "scope_check": "IN_SCOPE",
+      "qualifying": "NON_QUALIFYING",
+      "estimated_severity": "Medium",
+      "endpoint": "GET /{locale}/{slug}/all-resources/authors-and-time-range/",
+      "description": "Unauthenticated bulk PII disclosure: returns full email + user ID + display name + role for EVERY contributor of any project+locale. 127 emails (fr/firefox), 154 (de/firefox). View has @require_AJAX only, no @login_required. Bypasses opaque-username identity-hiding.",
+      "evidence": "200 JSON with authors[].email / id / display_name / role",
+      "reproduction": "curl -x http://localhost:8088 --proxy-insecure -k -A 'BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)' -H 'X-Requested-With: XMLHttpRequest' 'https://pontoon.allizom.org/fr/firefox/all-resources/authors-and-time-range/'",
+      "notes": "Real privacy bug, worth reporting for a fix; no payout (Medium)."
+    },
+    {
+      "finding_id": 8,
+      "type": "enumerable/pii",
+      "status": "CONFIRMED (technical), NON_QUALIFYING for bounty",
+      "confidence": 88,
+      "scope_check": "IN_SCOPE",
+      "qualifying": "NON_QUALIFYING",
+      "estimated_severity": "Medium",
+      "endpoint": "GET /get-history/?entity={id}&locale={locale}",
+      "description": "Unauthenticated translation-history endpoint leaks submitter email + username + uid for any sequentially-enumerable entity ID. Reveals internal usernames differing from public opaque slugs.",
+      "evidence": "200 JSON with uid/user(username)/name_or_email",
+      "reproduction": "curl -x http://localhost:8088 --proxy-insecure -k -A 'BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)' -H 'X-Requested-With: XMLHttpRequest' 'https://pontoon.allizom.org/get-history/?entity=58337&locale=fr'",
+      "notes": "Real privacy bug; no payout (Medium)."
+    },
+    {
+      "finding_id": 3,
+      "type": "pii",
+      "status": "CONFIRMED (technical), NON_QUALIFYING for bounty",
+      "confidence": 85,
+      "scope_check": "IN_SCOPE",
+      "qualifying": "NON_QUALIFYING",
+      "estimated_severity": "Medium",
+      "endpoint": "GET /contributors/",
+      "description": "Public leaderboard renders raw account email as display name when user has no display name (name_or_email fallback); also leaks email in Gravatar d= URL.",
+      "evidence": "<p class=name>aefgh39622@gmail.com</p> + ui-avatars.com/api/aefgh39622@gmail.com",
+      "reproduction": "curl -x http://localhost:8088 --proxy-insecure -k -A 'BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)' https://pontoon.allizom.org/contributors/",
+      "notes": "Real bug, 2+ emails confirmed; no payout (Medium)."
+    },
+    {
+      "finding_id": 4,
+      "type": "info disclosure",
+      "status": "CONFIRMED (technical), NON_QUALIFYING",
+      "confidence": 80,
+      "scope_check": "IN_SCOPE",
+      "qualifying": "NON_QUALIFYING",
+      "estimated_severity": "Low/Medium",
+      "endpoint": "GET /contributors/{username}/",
+      "description": "Profile page exposes internal Django PK via data-user attribute unauthenticated.",
+      "evidence": "data-user=\"2183\"",
+      "reproduction": "curl -x http://localhost:8088 --proxy-insecure -k -A 'BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)' 'https://pontoon.allizom.org/contributors/TheoChevalier/'",
+      "notes": "Minor; no payout."
+    }
+  ],
+  "discarded": [
+    {"id": 6, "type": "callback", "endpoint": "/accounts/fxa/login/?auth_params=...", "reason": "NOT_REPRODUCIBLE — FXA redirect_uri stayed canonical; FXA rejects unregistered redirect_uris. Original hunter over-reported Medium."},
+    {"id": 5, "type": "pii", "endpoint": "/contributor/{email}/", "reason": "FALSE_POSITIVE — registered and unregistered emails both return 404, no oracle."},
+    {"id": 1, "type": "idor", "endpoint": "/pin-comment/", "reason": "Global PM-only perm is residual-by-design; requires PM privileges, cosmetic; Informational."},
+    {"id": 2, "type": "idor", "endpoint": "/unpin-comment/", "reason": "Same as #1, Informational."},
+    {"id": 9, "type": "insecure", "endpoint": "missing CSP", "reason": "Config hardening Low; non-qualifying."},
+    {"id": 10, "type": "insecure", "endpoint": "/api/v2/schema/", "reason": "Public OpenAPI for open-source project; Low/Info, intentional."},
+    {"id": 11, "type": "insecure", "endpoint": "/signout/ GET 500", "reason": "Generic 500, Low; non-qualifying."},
+    {"id": 12, "type": "insecure", "endpoint": "server header disclosure", "reason": "Informational."}
+  ],
+  "bounty_eligible": "NONE — every confirmed finding is Medium or below; Mozilla program pays High/Critical only.",
+  "suggested_action": "The two strongest real issues (authors-and-time-range AND get-history unauthenticated email/uid disclosure) are legitimate Medium privacy findings. Not bounty-eligible, but worth reporting to Mozilla as quality/security disclosures for a fix. If seeking payout, pivot to a different in-scope target (e.g. accounts.firefox.com which has real High-severity IDOR history) or pursue authenticated testing on pontoon with a test FxA staging account to reach auth-gated surfaces."
+}

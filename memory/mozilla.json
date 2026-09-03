@@ -1,0 +1,253 @@
+{
+  "program": "mozilla",
+  "last_updated": "2026-09-03",
+  "confirmed_patterns": [],
+  "hacktivity_patterns": {
+    "note": "Mined from 46 disclosed Mozilla H1 reports on 2026-09-03 to guide target selection. Re-run mcp__hackerone__search_hacktivity query_string='mozilla AND disclosed:true' periodically for new disclosures.",
+    "recurring_bug_classes": [
+      "Subdomain takeover on *.mozilla.org/.com/.net, *.firefox.com, *.mozgcp.net, *.mozaws.net (4 disclosed hits: firefox.com subdomain #2899858 $500, addons-preview-cdn.mozilla.net via unregistered Fastly service #2706358 $500, mozaws.net x2 #2545012 #2398630) -- program pays a flat $100 per program's bounty table but historically some paid more. FASTLY SERVICE-LEVEL takeover (dangling CNAME to mozilla.map.fastly.net where Fastly returns 'unknown domain' error) is the dominant historical pattern here, NOT generic Heroku/Netlify/S3 dangling CNAME.",
+      "Secrets leaked into public CI/build logs (#2915647 Netlify token, Critical, no bounty amount shown; #3243860 Microsoft x-apikey, Medium, $200) -- content-based secret scanning of PUBLIC Taskcluster task logs/artifacts (intentionally public by design) is untested and distinct from access-control testing.",
+      "Pontoon (pontoon.allizom.org) has a 3-for-3 IDOR/authz track record from one researcher (adilnbabras): #3020021 vertical privesc unapprove-translation (Medium), #3325582 delete other users' PATs (Low), #3025797 pin/unpin any comment (Low). Worth a dedicated IDOR/auth/bizlogic-weighted hunt.",
+      "accounts.firefox.com has real history: #3154983 IDOR account deletion via session misbinding (High), #2737309 info disclosure on password-cancel endpoint (Low), #2387297 email verification bypass (Medium, on monitor.mozilla.org specifically).",
+      "Taskcluster web-server OAuth2 flow: #3734676 authorization codes reusable + exchange handler checks wrong expiry column (Medium, $2000) -- SAME target as firefox-ci-tc.services.mozilla.com but a DIFFERENT bug class (OAuth logic, not GraphQL filter) than the already-patched sift RCE. Requires an authenticated test account to probe (real OAuth flow) -- did not attempt this in the 2026-09-02/03 hunt since it required logging in, which was out of scope for that pass. Worth a dedicated authenticated-flow test via /setup-account if pursued."
+    ],
+    "confirmed_patched": [
+      "GraphQL filter:JSON argument -> sift library $where -> new Function() unauthenticated RCE (CVE-2026-11892, GHSA-ccv5-c45x-2q38, HackerOne #3782701, $12,000 Critical). Fixed in taskcluster >= 100.3.0 (PR taskcluster/taskcluster#8718) by removing sift entirely and replacing filter:JSON with plain searchTerm:String. VERIFIED on firefox-ci-tc.services.mozilla.com 2026-09-02: live schema only exposes searchTerm args, filter:JSON argument does not exist anywhere in the schema -- this specific target is patched, do not re-test this exact technique here."
+    ]
+  },
+  "subdomain_takeover_sweep": {
+    "last_run": "2026-09-03",
+    "method": "crt.sh CT-log enumeration of *.mozilla.org/.com/.net, *.firefox.com, *.mozgcp.net, *.mozaws.net -> dnspython bulk CNAME resolution -> filtered to known SaaS/cloud CNAME targets -> live HTTP fingerprint check via proxy",
+    "unique_hosts_found": 1850,
+    "hosts_with_cname": 326,
+    "hosts_cname_to_known_provider": 73,
+    "result": "CLEAN -- no dangling CNAME or Fastly 'unknown domain' fingerprint found across all 16 Heroku/Netlify candidates or all 47 mozilla.map.fastly.net candidates tested live. One non-exploitable anomaly: detectportal.prod.mozaws.net returns 502 'Certificate verify failed: hostname mismatch' (broken backend origin TLS config, not a claimable resource, not bounty-qualifying).",
+    "full_hostname_list": "memory/mozilla_subdomains_2026-09-03.txt (1850 hosts from CT logs, for cheap incremental re-checks -- just re-resolve CNAMEs against this list rather than re-fetching crt.sh, unless doing a full refresh to catch newly-issued certs for brand-new subdomains)",
+    "note": "Subdomain takeover is a moving target -- Mozilla's disclosed history shows these get caught when a resource is NEWLY decommissioned. Re-running the CNAME-resolution + Fastly-fingerprint check periodically (weekly/monthly) against this host list, plus a fresh crt.sh pull to catch new subdomains, is more likely to find something than a single pass."
+  },
+  "pontoon_hunt_2026-09-03": {
+    "target": "pontoon.allizom.org (staging -- program rule: test here only, never pontoon.mozilla.org)",
+    "hunters_run": "17/17",
+    "confirmed_findings": [
+      {
+        "type": "pii",
+        "status": "CONFIRMED live, validator-verified independently",
+        "severity": "Medium",
+        "bounty_eligible": false,
+        "description": "GET /contributors/ (public leaderboard) and individual /contributors/<id>/ profile pages render a user's raw account EMAIL as their public display name when the user never set a display name -- fallback bug, not intentional. Confirmed 2 real users' emails exposed unauthenticated (out of ~100 sampled on the leaderboard; true platform-wide total unknown). Also leaks in the Gravatar avatar URL's d= param.",
+        "why_not_bountied": "Mozilla's own severity matrix: passive PII disclosure with no immediate risk/no attacker action enabled = Medium. Program only pays High/Critical. Still worth reporting to Mozilla for a fix (real bug, real users, zero auth needed) even without payout -- good disclosure candidate regardless of bounty.",
+        "repro": "curl -x http://localhost:8088 --proxy-insecure --cacert /home/mohit/.mitmproxy/mitmproxy-ca-cert.pem -A 'BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)' https://pontoon.allizom.org/contributors/ | grep -E 'class=\"name\"'"
+      },
+      {
+        "type": "pii/enumerable",
+        "status": "CONFIRMED (validator-verified live, unauthenticated)",
+        "severity": "Medium",
+        "bounty_eligible": false,
+        "description": "GET /{locale}/{slug}/all-resources/authors-and-time-range/ returns FULL email + user ID + display name + role for EVERY contributor to any project+locale WITHOUT authentication (127 emails fr/firefox, 154 de/firefox). View only @require_AJAX, no @login_required. Bypasses the platform's opaque-username identity-hiding scheme. curl needs header X-Requested-With: XMLHttpRequest.",
+        "repro": "curl -x http://localhost:8088 --proxy-insecure -k -A 'BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)' -H 'X-Requested-With: XMLHttpRequest' 'https://pontoon.allizom.org/fr/firefox/all-resources/authors-and-time-range/'"
+      }
+    ],
+    "high_value_unconfirmed_lead": {
+      "type": "xxe",
+      "status": "NEEDS_LIVE_CONFIRMATION -- static-analysis only, not yet tested against the live target",
+      "estimated_severity_if_confirmed": "High, possibly Critical (if readable local files include app secrets/DB creds)",
+      "description": "Pontoon's translation-import feature (/upload/, auth-gated) parses uploaded .xliff files via the moz-l10n library (github.com/mozilla/moz-l10n, pinned moz-l10n[xml]==0.14.1 + lxml==6.0.2 in Pontoon's requirements/prod.txt). moz-l10n's MAIN xliff_parse() entry point (python/moz/l10n/formats/xliff/parse.py line 70, https://github.com/mozilla/moz-l10n/blob/main/python/moz/l10n/formats/xliff/parse.py#L70) calls `etree.fromstring(source...)` with NO parser argument -- uses lxml's default (resolve_entities=True), the classic XXE footgun (no_network=True blocks http:// entity fetches but NOT file:// local reads). CORROBORATING: a different, smaller helper in the SAME file, xliff_parse_message() at line 174, explicitly hardens with `etree.XMLParser(resolve_entities=False)` -- proving the maintainers know this exact risk but didn't apply it to the main file-parsing path.",
+      "what_confirmation_requires": "A real (standard, non-bypass) Pontoon contributor account created via the normal public FxA sign-up/OAuth flow -- this is ordinary registration, not an authorization bypass, stays within program rules. Then upload one crafted-but-safe diagnostic .xliff (internal-subset SYSTEM entity pointing at a low-sensitivity file like /etc/hostname, NOT anything sensitive on a first pass) via /upload/ and observe whether the entity is expanded server-side (would appear in the resulting translation import).",
+      "validator_note": "This is the single highest-value unresolved lead from the 2026-09-03 Mozilla hunt session. Worth prioritizing a test-account setup specifically to close this out."
+    },
+    "discarded": [
+      "idor: /translations/delete/ returns 400 (AJAX-check-first) vs siblings' 302 (auth-check-first) -- WORKING_AS_INTENDED, a validation-ORDER quirk not an authz bypass, no object accessed without authorization.",
+      "xss: dangerouslySetInnerHTML sinks in translate.min.js (ProjectInfo.info, UserNotification.description.content) exist and page has no CSP, but sinks are fed by backend/stored fields not URL input -- needs to know if a low-privileged role (translator, not just staff) can write unsanitized content to those fields before this is anything more than Informational.",
+      "insecure: duplicated (non-conflicting) HSTS header + OPTIONS returning full body instead of empty on /projects/ -- both WORKING_AS_INTENDED / cosmetic, no security consequence.",
+      "ssrf, sqli, xss(live), auth(open-redirect claim -- superseded/resolved by callback hunter's decisive POST test), rce, xxe(live), ssti, secrets, otp, bizlogic, callback, enumerable, referer, checksum: all CLEAN, 0 findings."
+    ],
+    "notes_for_future_hunts": [
+      "Every sensitive action endpoint requires authenticated session + CSRF_USE_SESSIONS-style token -- true IDOR testing (the 3-for-3 historical bug class here) needs two distinct authenticated accounts on different locale teams. Not yet done.",
+      "/next=/ open-redirect param on /accounts/fxa/login/ is properly validated (django-allauth's url_has_allowed_host_and_scheme) -- confirmed clean via an actual POST with valid CSRF, don't re-test.",
+      "/buglist.cgi-equivalent bot-protection doesn't exist here, but be aware /projects/<script>.../ style payloads get blocked with edge 406 (same WAF pattern seen on other Mozilla properties)."
+    ],
+    "last_run": "2026-09-03",
+    "validator_note": "Second full 17-hunter pass 2026-09-03. EVERY confirmed finding on pontoon is Medium or below -> NON-bounty-eligible (Mozilla pays High/Critical only). Highest-signal real issues: (a) authors-and-time-range + get-history unauthenticated bulk email/uid/username disclosure, (b) contributors email-as-display-name fallback. All are legitimate Medium-class privacy/refactor bugs worth reporting for a fix even with no payout.",
+    "technology_stack": [
+      "Python/Django",
+      "Django REST Framework + drf-spectacular (Swagger /api/v2/)",
+      "PostgreSQL",
+      "React (frontend)",
+      "jQuery AJAX",
+      "OpenResty",
+      "Varnish (2 layers) + Google CDN",
+      "django-allauth + FXA OAuth"
+    ],
+    "key_endpoints": [
+      "GET /api/v2/ [Swagger], /api/v2/schema/ [OpenAPI]",
+      "POST /pin-comment/, /unpin-comment/, /delete-comment/, /edit-comment/ (comment_id body)",
+      "POST /delete-token/{id}/, /generate-token/ (PAT)",
+      "POST /translations/approve|unapprove|reject|unreject|delete|create/",
+      "POST /messaging/ajax/fetch-recipients/, /messaging/ajax/send/",
+      "POST /toggle-active-user-status/{username}/ (admin only)",
+      "GET /{locale}/{slug}/all-resources/authors-and-time-range/  <-- PII leak",
+      "GET /get-history/?entity=&locale=  <-- PII leak",
+      "GET /contributors/, /contributors/{username}/  <-- email display + data-user PK",
+      "POST /{locale}/ajax/translation-memory/upload|edit|delete/ (.TMX XXE: python ET blocked, billion-laughs DoS auth-gated)",
+      "GET /verify-email-address/{token}/, /unsubscribe/{uuid}/ (HS256 JWT / uuid4)",
+      "GET /contributor/{email}/ (FALSE email enum oracle)",
+      "POST /accounts/fxa/login/ (Auth0/FXA allauth)"
+    ]
+  },
+  "secrets_in_ci_logs_sweep": {
+    "last_run": "2026-09-03",
+    "target": "firefox-ci-tc.services.mozilla.com (Taskcluster Index + Queue REST APIs)",
+    "method": "Resolved 15 diverse real task IDs across gecko.v2.*, project.relman.*, project.mobile, project.glean, comm.v2 namespaces (external-service-facing task types prioritized: code-review bot, code-coverage uploads, bouncer/symbols/snap/updatebot/nightly/perf decision tasks). Fetched artifact listings + log/config content (~88MB total) via read-only GET, grepped for credential-shaped patterns.",
+    "result": "CLEAN -- no genuine leaked credentials found. code-review bot confirmed to correctly pull secrets from Taskcluster's secrets service at runtime rather than embedding them in logs.",
+    "false_positive_to_remember": "Firefox build logs embed MOZ_GOOGLE_LOCATION_SERVICE_API_KEY / MOZ_GOOGLE_SAFEBROWSING_API_KEY / MOZ_MOZILLA_API_KEY in compiler invocation lines -- these are Mozilla's well-known, INTENTIONALLY-embedded production keys that ship in every official Firefox binary (extractable via about:buildconfig). Do NOT report these as a leak in future scans.",
+    "note": "Downloaded artifacts staged at scratchpad/logs/ and scratchpad/artifacts_lists/ from this session (ephemeral, will not persist). Byte-Range requests on the 37MB build log were ignored by the server (full file served anyway) -- factor that into future budget planning, Range headers don't reliably limit download size on this host's artifact redirects.",
+    "note2": "Only 15 of many thousands of daily Firefox CI tasks were sampled -- this is not exhaustive. A future pass could sample a different/larger set of task types (especially anything doing external deployment/publishing, e.g. docs/npm/docker publishing tasks not covered this round) for better coverage."
+  },
+  "bugzilla_dev_notes": {
+    "last_run": "2026-09-03",
+    "target": "bugzilla-dev.allizom.org (dev instance -- program rules require testing here, NOT bugzilla.mozilla.org production)",
+    "tech": "BMO (Perl/CGI Bugzilla fork, github.com/mozilla-bteam/bmo), version string exposed at /rest/version, DBI-based parameterized queries throughout -- no raw SQLi surface found.",
+    "result": "idor+sqli hunt: CLEAN, 0 findings.",
+    "notes_for_future_hunts": [
+      "/buglist.cgi is fronted by an edge anti-automation 'Client Challenge' JS interstitial (distinct CSP referencing /_fs-ch-*/ assets) -- do not attempt to bypass, this is intentional per the program's explicit 'no automated scanners' rule for Bugzilla. Skip this endpoint in future hunts.",
+      "/rest/bug/{id} (path form) 404s with a JSON error for nonexistent bugs; /rest/bug?id={id} (query form) instead returns HTTP 200 with empty {\"bugs\":[]} for the SAME nonexistent id -- confirmed REST design inconsistency but tested UNIFORM across every id tried (no restricted/confidential bug id was found to produce a differential 'access denied' response vs generic 'not found'). Not an access-control leak as tested -- would need a KNOWN group-restricted bug id to actually test the access-control boundary (not found blind).",
+      "show_bug.cgi and /rest/bug/{id} behave consistently for both public and nonexistent bugs -- no UI-vs-REST access mismatch found.",
+      "Every anonymous GET sets two cookies unconditionally: Bugzilla_login_request_cookie and a long random github_token (HttpOnly, Secure, SameSite=Lax) -- minted even without initiating GitHub OAuth. Flagged by recon as worth an auth/session-fixation check but NOT yet tested (idor/sqli hunters didn't cover this) -- good candidate for a future auth-focused pass.",
+      "CSP is enforced (blocking) on / and show_bug.cgi but only Content-Security-Policy-Report-Only (non-blocking) on query.cgi and describecomponents.cgi -- inconsistent enforcement, worth an XSS hunter's attention in a future pass (not tested this round, only sqli+idor were requested).",
+      "/rest/* has wide-open CORS (Access-Control-Allow-Origin: *) and advertises custom auth headers (x-bugzilla-api-key/login/password/token) in Access-Control-Allow-Headers -- worth checking whether Access-Control-Allow-Credentials is also set to true (would be a real CORS misconfig if combined with wildcard origin); not tested this round.",
+      "Public bug data (e.g. bug 1000000) includes cc_detail with real names + personal email addresses of everyone CC'd, readable with zero authentication -- this appears to be Bugzilla's normal intended behavior for non-restricted bugs (mirrors what's already public on production), not a new finding on its own."
+    ]
+  },
+  "false_positives": [
+    {
+      "type": "secrets",
+      "endpoint_pattern": "POST https://firefox-ci-tc.services.mozilla.com/graphql — query { secrets(searchTerm: \"\") { edges { node { name } } } }",
+      "reason": "Anonymous listing of ~300 secret NAMES (no values) is WORKING AS INTENDED. Mozilla's public IaC (github.com/mozilla-releng/fxci-config, grants.d/grants.yml) explicitly grants the 'anonymous' role the scope 'secrets:list-secrets' as part of a documented 'public access' block. The singular secret(name:) object query IS properly gated on secrets:get:<name> — Mozilla deliberately drew the line at names-only. Do not re-report."
+    },
+    {
+      "type": "enumerable",
+      "endpoint_pattern": "POST https://firefox-ci-tc.services.mozilla.com/graphql — query { roles(searchTerm:\"\") ... } / listRoleIds(searchTerm:\"\")",
+      "reason": "Anonymous full role-directory listing (1019 roleIds) is WORKING AS INTENDED — anonymous role is granted 'auth:get-role:*' and 'auth:list-roles' in the same public fxci-config/grants.d block. Do not re-report the base finding. NOTE for future hunts: the output does incidentally include ~19 individual login-identity:<idp>|<username> roleIds (real Mozilla staff LDAP/GitHub usernames) and 2 roleIds naming '-private' repos (firefox-ci-playground-private, staging-xpi-private) — validator judged this Low/Informative (not bounty-eligible, root cause is the deliberate grant) but flagged it as worth a courtesy hardening note to Mozilla if ever writing a report. Don't spend a full hunt cycle re-discovering this."
+    },
+    {
+      "type": "idor",
+      "endpoint_pattern": "POST /graphql — client(clientId)/role(roleId)/secret(name)/task(taskId)/worker/workerType/WorkerPool with fabricated IDs",
+      "reason": "All object-lookup queries return uniform generic 'not found'/'unauthorized' errors with no differential leakage between nonexistent vs. unauthorized. No IDOR. secret(name:) specifically confirmed properly scope-gated (secrets:get:<name>)."
+    },
+    {
+      "type": "ssrf",
+      "endpoint_pattern": "renderTaskclusterYml(payload: JSON!)",
+      "reason": "Plausible surface (fetches .taskcluster.yml from GitHub given org/repo fields) but not an arbitrary-URL SSRF — targets GitHub only per source. Dynamic test was blocked by an unrelated tool-layer safety classifier both times attempted (not a target-side finding); untested, not confirmed either way. Worth a fresh-session retry if SSRF coverage matters, but don't assume it's a bug from this alone."
+    },
+    {
+      "type": "sqli",
+      "endpoint_pattern": "POST /graphql searchTerm args (roles, clients, secrets, listRoleIds, listDenylistAddresses)",
+      "reason": "Edge WAF returns HTTP 406 for any request body containing SQL metacharacters/keywords (', OR, SELECT, --) before it reaches the resolver. No SQL error, no anomalous result set. Also triggered a tool-layer safety-classifier warning on the hunter run (same as SSRF) — treat as environment noise, not a target signal."
+    },
+    {
+      "type": "xss",
+      "endpoint_pattern": "GET / (query string), POST /graphql (invalid arg values)",
+      "reason": "Static SPA shell does not reflect query-string values server-side. GraphQL invalid-argument errors return null data with no error text echoing input. Raw <script> tags trigger the same edge-WAF 406 as SQLi payloads."
+    },
+    {
+      "type": "auth",
+      "endpoint_pattern": "POST /graphql with Authorization: Bearer <malformed>",
+      "reason": "Confirmed real but Low-severity only: malformed Bearer token causes unhandled HTTP 500 {\"name\":\"SyntaxError\"} instead of clean 401/403 (likely un-caught base64-decode/JSON.parse on the token). No elevated access, no data leak beyond the bare exception class name. Not bounty eligible per program's Low/Medium exclusion. Worth mentioning as a hardening note but not worth a full report on its own.",
+      "reproduction_curl": "curl -x http://localhost:8088 --proxy-insecure --cacert /home/mohit/.mitmproxy/mitmproxy-ca-cert.pem -A \"BountyGrimoire/1.0 (Security Research; HackerOne: mozilla program)\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer asdf\" -X POST \"https://firefox-ci-tc.services.mozilla.com/graphql\" --data '{\"query\":\"query { currentScopes }\"}'"
+    },
+    {
+      "type": "xxe",
+      "endpoint_pattern": "POST /graphql with Content-Type: application/xml",
+      "reason": "Cleanly rejected with 406 — Apollo Server only accepts application/json. No XML parser reachable. N/A for this target permanently."
+    },
+    {
+      "type": "ssti",
+      "endpoint_pattern": "POST /graphql searchTerm args with {{7*7}}",
+      "reason": "Neither evaluated nor reflected — searchTerm is used for DB substring match, not template rendering. N/A for this target permanently (no server-side templating anywhere in this app)."
+    },
+    {
+      "type": "otp",
+      "endpoint_pattern": "n/a",
+      "reason": "All auth/MFA lives on auth.mozilla.auth0.com (Auth0), which is NOT in this program's scope. firefox-ci-tc.services.mozilla.com itself has zero OTP/2FA surface. Permanently N/A — skip this hunter type on this target in future runs."
+    },
+    {
+      "type": "pii",
+      "endpoint_pattern": "POST /graphql — clients(searchTerm)",
+      "reason": "Properly gated: requires auth:list-clients scope, anonymous gets a clean authorization error, no clientId/PII disclosed. Contrast with the intentionally-public secrets/roles list queries above."
+    },
+    {
+      "type": "bizlogic",
+      "endpoint_pattern": "task(taskId)/status(taskId) with well-formed nonexistent IDs",
+      "reason": "No existence oracle — uniform 'does not exist' error regardless of whether task is absent vs. hidden. Also architecturally intentional: Firefox-CI task metadata is meant to be openly readable (CI transparency)."
+    },
+    {
+      "type": "callback",
+      "endpoint_pattern": "GET / with ?redirect=/?next= params",
+      "reason": "No server-side redirect logic exists anywhere on this domain — static SPA shell only, routing is entirely client-side via react-router. Permanently N/A."
+    },
+    {
+      "type": "insecure",
+      "endpoint_pattern": "OPTIONS /graphql (CORS), GET /graphql (method/debug-UI check), /__version__",
+      "reason": "CORS is origin-allowlisted (untrusted Origin gets no ACAO header). Apollo Server's built-in CSRF plugin correctly rejects GET/simple-content-type requests with no GraphiQL/Playground exposed. /__version__ (Dockerflow convention) discloses only intentionally-public build metadata (version 107.0.0 + commit hash + public repo link)."
+    },
+    {
+      "type": "referer",
+      "endpoint_pattern": "n/a",
+      "reason": "Referrer-Policy: origin is set; no sensitive tokens ever appear in any URL on this domain (Auth0 handles auth on a separate domain). Permanently N/A."
+    },
+    {
+      "type": "checksum",
+      "endpoint_pattern": "artifacts/latestArtifacts GraphQL Artifact type",
+      "reason": "Artifact type only exposes taskId/runId/storageType/name/expires/contentType/contentLength — no checksum/hash/signature field anywhere in the schema, no webhook-HMAC endpoint. Actual artifact integrity is handled on the separate 'Product Delivery' scope entry (archive.mozilla.org/download.mozilla.org), not this one. Permanently N/A for this specific domain."
+    },
+    {
+      "type": "callback",
+      "endpoint_pattern": "/accounts/fxa/login/?auth_params=redirect_uri=...",
+      "reason": "OAuth (FXA) auth_params redirect_uri injection NOT REPRODUCIBLE. Redirect_uri stayed canonical in the FXA 302; the auth_params override had no effect, and FXA rejects unregistered redirect_uris regardless. Original hunter over-reported a Medium. Do not pursue."
+    },
+    {
+      "type": "pii",
+      "endpoint_pattern": "GET /contributor/{email}/",
+      "reason": "NOT an email enumeration oracle. Both registered and unregistered emails return 404 => no differential. FALSE_POSITIVE."
+    },
+    {
+      "type": "idor",
+      "endpoint_pattern": "POST /pin-comment/ and /unpin-comment/ (cross-project)",
+      "reason": "Global 'base.can_manage_project' with no per-project/locale scoping is RESIDUAL BY DESIGN (global project_managers role). Requires PM-grade privileges, cosmetic impact, not a within-role escalation => Informational, not reportable."
+    },
+    {
+      "type": "otp",
+      "endpoint_pattern": "n/a (pontoon)",
+      "reason": "All real 2FA/MFA delegated to accounts.firefox.com (out of scope). Pontoon's own email-verify JWT (HS256, SECRET_KEY-bound), unsubscribe UUID (uuid4), and PAT (43-char secrets) are all cryptographically sound. Skip OTP hunter on pontoon."
+    },
+    {
+      "type": "checksum",
+      "endpoint_pattern": "PAT /generate-token/, email-verify token",
+      "reason": "PAT uses check_password (constant-time PBKDF2/bcrypt); email JWT HS256 alg-locked; unsubscribe UUID unguessable. All integrity/signature mechanisms cryptographically sound. Skip checksum hunter on pontoon."
+    },
+    {
+      "type": "referer",
+      "endpoint_pattern": "all (pontoon)",
+      "reason": "Referrer-Policy: same-origin uniformly enforced; CSRF in POST body; session cookie HttpOnly+Secure+SameSite=Lax. No referer token leakage. Permanently N/A on pontoon."
+    }
+  ],
+  "technology_stack": [
+    "React (Vite-bundled SPA)",
+    "Apollo GraphQL client + Apollo Server (backend, CSRF-protected)",
+    "Material-UI (MUI)",
+    "react-router (client-side routing only)",
+    "Auth0 (mozilla-auth0 strategy, hosted on auth.mozilla.auth0.com — separate, out-of-scope domain)",
+    "TaskCluster (github.com/taskcluster/taskcluster, open source)",
+    "Mozilla fxci-config (github.com/mozilla-releng/fxci-config — public IaC defining role grants incl. anonymous role scopes)",
+    "openresty (origin) behind Varnish + Google Cloud CDN",
+    "Edge WAF/bot-protection layer returning HTTP 406 for requests containing SQLi/XSS-signature patterns (', OR, SELECT, --, <script>) — applies to ALL endpoints including /robots.txt and /sitemap.xml"
+  ],
+  "discovered_endpoints": [
+    "GET / — SPA shell",
+    "GET /static/env.js — runtime config (TASKCLUSTER_ROOT_URL, GRAPHQL_ENDPOINT=/graphql, GRAPHQL_SUBSCRIPTION_ENDPOINT=wss://ws-sub.prod.taskcluster.prod.webservices.mozgcp.net/subscription, UI_LOGIN_STRATEGY_NAMES=mozilla-auth0, APPLICATION_NAME=FirefoxCI)",
+    "POST /graphql — main API, introspection ENABLED, 51 query fields / 30 mutation fields (full lists in session transcript — re-fetch via {__schema{queryType{fields{name}} mutationType{fields{name}}}} if needed, cheap single request)",
+    "GET /__version__ — Dockerflow version endpoint (public build metadata only)",
+    "GET /robots.txt, /sitemap.xml — both return 406 (WAF, not a real finding)"
+  ],
+  "notes": "Full 17-hunter-type pass completed 2026-09-02/03. Zero bounty-eligible findings. This target's real dynamic surface is entirely one read-only-tested GraphQL API; most of the classic 17 vuln categories (sqli/xss/rce/xxe/ssti/otp/callback/referer/checksum) are structurally not applicable and don't need re-testing unless the app architecture changes. The two 'juicy-looking' findings (secrets listing, role directory listing) are both deliberate Mozilla platform design, verifiable directly against github.com/mozilla-releng/fxci-config/blob/main/grants.d/grants.yml — check that file first before re-investigating anonymous-scope-related leads on this target. A prior local memory file (memory/taskcluster-recon.md) containing unverifiable claims (an alleged '$12k unauthenticated RCE report #3782701') was found pre-existing at the start of this session and was NOT trusted or used — its claims were never corroborated. If real, it would be worth checking HackerOne's own disclosed-reports list directly rather than trusting an unverified local file."
+}

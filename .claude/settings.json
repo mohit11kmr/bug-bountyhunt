@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "WebFetch(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(dd *)",
+      "Bash(mkfs*)",
+      "Bash(chmod -R 777 /*)",
+      "Bash(sudo rm*)",
+      "Bash(sudo dd*)",
+      "Bash(sudo mkfs*)",
+      "Read(.env*)",
+      "Read(~/.ssh/*)",
+      "Read(~/.gnupg/*)",
+      "Read(~/.aws/*)",
+      "mcp__hackerone__submit_report",
+      "mcp__hackerone__create_report_intent",
+      "mcp__hackerone__submit_report_intent",
+      "mcp__hackerone__update_report_intent",
+      "mcp__hackerone__delete_report_intent",
+      "mcp__hackerone__delete_report_intent_attachment",
+      "mcp__hackerone__upload_report_intent_attachment"
+    ]
+  }
+}

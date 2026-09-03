@@ -1,0 +1,31 @@
+{
+  "target": "firefox-ci-tc.services.mozilla.com",
+  "program": "mozilla",
+  "date": "2026-09-03",
+  "hunters_launched": 17,
+  "validated_findings": [],
+  "discarded": [
+    {
+      "type": "auth",
+      "summary": "Malformed Authorization: Bearer header causes unhandled HTTP 500 {\"name\":\"SyntaxError\"} instead of clean 401/403",
+      "estimated_severity": "Low",
+      "bounty_eligible": false,
+      "reason": "Confirmed real (reproduced by validator) but Low severity — Mozilla's program explicitly excludes Low/Medium from bounty eligibility. No elevated access, no sensitive data leaked beyond an internal exception class name."
+    },
+    {
+      "type": "secrets",
+      "summary": "Anonymous GraphQL secrets(searchTerm) lists ~300 secret NAMES (no values) across Mozilla CI projects",
+      "estimated_severity": "Low/Informative",
+      "bounty_eligible": false,
+      "reason": "WORKING_AS_INTENDED — verified directly against Mozilla's public IaC (github.com/mozilla-releng/fxci-config grants.d/grants.yml), which explicitly grants the anonymous role 'secrets:list-secrets' as documented public-access design. The gated secret(name:) object query confirms Mozilla deliberately drew the access-control line at names-only."
+    },
+    {
+      "type": "enumerable",
+      "summary": "Anonymous roles(searchTerm)/listRoleIds(searchTerm) return the full 1019-entry role directory, including ~19 individual staff LDAP/GitHub usernames and 2 roleIds naming '-private' repos",
+      "estimated_severity": "Low/Informative",
+      "bounty_eligible": false,
+      "reason": "Base mechanism WORKING_AS_INTENDED (anonymous role granted auth:get-role:*/auth:list-roles in the same public fxci-config/grants.d block). The individual-username and private-repo-name exposure is a plausible unintended side effect worth a courtesy hardening note to Mozilla, but not bounty-eligible and likely to be closed Informative given the deliberate underlying grant."
+    }
+  ],
+  "notes": "Full 17-hunter-type sweep, zero bounty-eligible findings. See memory/mozilla.json for reusable false_positives so future hunts on this target don't repeat this work. A pre-existing, unverifiable local file (memory/taskcluster-recon.md) claiming a prior '$12k RCE report' was found at session start and explicitly NOT trusted or relied upon — all findings in this session were independently, freshly verified."
+}
