@@ -1,6 +1,3 @@
-<div align="center">
-
-# 🦊 BountyGrimoire
 **Fully Autonomous AI Agents for Continuous Bug Bounty Hunting**
 
 Powered by **17 specialized AI agents** (+ a dedicated recon step) playing both Attacker and Validator.<br/>
